@@ -200,7 +200,7 @@ export class Session {
     const roll = e.type === 'comment' ? this.random() : 0;
     const d = decide(e, this.settings, {
       queueSize: this.queue.size,
-      lastGiftAt: e.type === 'gift' ? this.lastGiftBefore(e) : this.lastGiftAt,
+      lastGiftAt: this.lastGiftAt,
       sessionStartAt: this.startAt,
       roll,
     });
@@ -212,11 +212,6 @@ export class Session {
       if (r.result === 'full') this.owed += 1;
       else if (r.result === 'added' && d.reason === 'free') this.freeAccepted += 1;
     }
-  }
-
-  /** lastGiftAt chỉ dùng cho lời xin miễn phí; với quà không ảnh hưởng. */
-  private lastGiftBefore(_e: LiveEvent): number | null {
-    return this.lastGiftAt;
   }
 
   private addOpts() {
