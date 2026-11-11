@@ -750,21 +750,21 @@ export function createTikTokSource(handle: string, factory: (handle: string) => 
 
 | Sự kiện thư viện | `LiveEvent` | Trường dùng | Trạng thái |
 |---|---|---|---|
-| `'chat'` | `comment` | `data.comment` | README xác nhận |
-| `'gift'` | `gift` — **bỏ qua khi `data.giftDetails?.giftType === 1 && !data.repeatEnd`** | `data.giftDetails?.giftName`, `data.repeatCount`; `coins = <xu một quà> × repeatCount` | README xác nhận, trừ trường xu |
-| `'like'` | `like` | `data.likeCount` | README xác nhận |
+| `'chat'` | `comment` | `data.content` | `.d.ts` 2.5.0 (README ghi `data.comment` — sai với `TikTokLiveConnection`) |
+| `'gift'` | `gift` — **bỏ qua khi `data.gift?.type === 1 && !data.repeatEnd`** (`repeatEnd` là số 0/1) | `data.gift?.name`, `data.repeatCount`; `coins = data.gift.diamondCount × repeatCount` | `.d.ts` 2.5.0 (README ghi `giftDetails` — sai) |
+| `'like'` | `like` | `data.count` | `.d.ts` 2.5.0 (README ghi `likeCount` — sai) |
 | `'member'` | `join` | | README xác nhận |
 | `'follow'` | `follow` | | README xác nhận |
-| `'roomUser'` | `viewers` | `data.viewerCount` | README xác nhận |
+| `'roomUser'` | `viewers` | `Number(data.total)` (chuỗi int64; cùng tag proto 3 với `viewerCount` của v2) | `.d.ts` 2.5.0 (README ghi `viewerCount` — sai) |
 | `'streamEnd'` | `status ended` | | README xác nhận |
 | `'disconnected'` | `status disconnected` | | README xác nhận |
-| `'error'` | `status error` | `message` lấy từ lỗi | README xác nhận |
+| `'error'` | `status error` | `message` ghép từ `data.info` và `data.exception.message` | `.d.ts` 2.5.0 |
 
-Người dùng: `data.user?.userId`, `data.user?.uniqueId` → `handle`, `data.user?.nickname` (README xác nhận). `connect()` trả `Promise` của một đối tượng có `roomId`; `disconnect()` trả `Promise` và gọi được cả khi chưa nối (README xác nhận) — vì vậy `RawConnection.disconnect` có kiểu `() => void | Promise<void>`.
+Người dùng (`.d.ts` 2.5.0, kiểu `User` của tiktok-live-proto/v3): `data.user?.id` → `userId` (chuỗi; `''` coi như thiếu), `data.user?.displayId` → `handle`, `data.user?.nickname`. `connect()` trả `Promise` của một đối tượng có `roomId`; `disconnect()` trả `Promise` và gọi được cả khi chưa nối (README xác nhận) — vì vậy `RawConnection.disconnect` có kiểu `() => void | Promise<void>`.
 
 **Hai trường README 2.5.0 không nêu, phải đọc file `.d.ts` ở Step 1 rồi ghi vào đây trước khi viết test:**
-- Số xu của một quà: `__________` (ứng viên: `data.giftDetails.diamondCount`).
-- URL ảnh đại diện: `__________` (ứng viên: `data.user.profilePicture.urls[0]`).
+- Số xu của một quà: `data.gift.diamondCount` (kiểu `Gift` trong tiktok-live-proto/v3; không có `giftDetails`).
+- URL ảnh đại diện: `data.user.avatarThumb.urlList[0]` (dự phòng `avatarMedium`, rồi `avatarLarge`; không có `profilePicture`).
 
 Toàn bộ việc dịch dữ liệu thư viện sang `LiveEvent` nằm trong `src/sources/tiktok.ts` và được test bằng dữ liệu giả có đúng hình dạng 2.5.0; `main.ts` chỉ có một dòng `h => new TikTokLiveConnection(h)`.
 

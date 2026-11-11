@@ -1,0 +1,23 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #1b1a17;
+  overflow: hidden;
+}
+
+.stage-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+}
+
+#stage {
+  display: block;
+  /* Giữ tỉ lệ 540×960, co giãn theo cửa sổ. */
+  height: min(100vh, calc(100vw * 960 / 540));
+  width: auto;
+  aspect-ratio: 540 / 960;
+}

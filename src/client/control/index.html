@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SketchQueue LIVE · Điều khiển</title>
+    <link rel="stylesheet" href="./control.css" />
+  </head>
+  <body>
+    <div id="offline" class="offline" hidden>Mất kết nối với máy chủ, đang thử lại…</div>
+
+    <header class="top">
+      <div class="brand">SketchQueue <span>LIVE</span></div>
+      <a id="open-stage" class="link" href="/stage" target="_blank" rel="noopener">Mở sân khấu ↗</a>
+    </header>
+
+    <main class="wrap">
+      <!-- (1) Kết nối -->
+      <section class="panel conn">
+        <input id="target" class="field grow" type="text" placeholder="Link hoặc tên tài khoản TikTok" autocomplete="off" />
+        <button id="btn-rehearsal" class="btn">Diễn tập</button>
+        <button id="btn-live" class="btn primary">Kết nối thật</button>
+        <button id="btn-disconnect" class="btn ghost">Ngắt</button>
+        <span id="conn-status" class="status" data-state="idle">Chưa kết nối</span>
+        <span id="room-id" class="muted"></span>
+      </section>
+
+      <!-- (2) Công tắc nhanh -->
+      <section class="panel toggles">
+        <label class="switch"><input id="tg-gifts" type="checkbox" /><span class="knob"></span>Nhận quà</label>
+        <label class="switch"><input id="tg-free" type="checkbox" /><span class="knob"></span>Cho xin vẽ miễn phí</label>
+        <button id="btn-settings" class="btn ghost push">Cài đặt</button>
+      </section>
+
+      <!-- (3) Số liệu -->
+      <section class="panel">
+        <div id="tiles" class="tiles"></div>
+        <div id="top-gifters" class="line"></div>
+        <div id="free-line" class="line muted"></div>
+      </section>
+
+      <!-- (4) Sự kiện + đang vẽ / hàng chờ -->
+      <section class="cols">
+        <div class="panel feed-panel">
+          <h2>Sự kiện</h2>
+          <ol id="feed" class="feed"></ol>
+        </div>
+        <div class="side">
+          <div class="panel now">
+            <h2>Đang vẽ</h2>
+            <div class="now-head">
+              <span id="now-name" class="now-name">—</span>
+              <span id="now-badge" class="badge" hidden>MÀU</span>
+            </div>
+            <div id="now-label" class="muted"></div>
+            <div class="bar"><div id="now-bar" class="bar-fill"></div></div>
+            <div class="row">
+              <button id="btn-pause" class="btn">Tạm dừng (P)</button>
+              <button id="btn-skip" class="btn">Bỏ qua (S)</button>
+              <button id="btn-redo" class="btn ghost">Vẽ lại lượt trước</button>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="queue-head">
+              <h2>Hàng chờ <span id="queue-count" class="muted"></span></h2>
+              <div class="row">
+                <button id="btn-manual" class="btn small">+ Tự nhập</button>
+                <button id="btn-clear" class="btn small danger">Xoá hết</button>
+              </div>
+            </div>
+            <ol id="queue" class="queue"></ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- (5) Hàng thử -->
+      <section class="panel test">
+        <span class="muted">Thử:</span>
+        <input id="test-user" class="field" type="text" value="mai_test" aria-label="Người thử" />
+        <select id="test-gift" class="field" aria-label="Quà"></select>
+        <input id="test-count" class="field num" type="number" min="1" value="1" aria-label="Số lượng" />
+        <button id="btn-test-gift" class="btn">Tặng thử</button>
+        <input id="test-comment" class="field grow" type="text" placeholder="Nội dung bình luận" aria-label="Bình luận thử" />
+        <button id="btn-test-comment" class="btn">Bình luận thử</button>
+        <button id="btn-test-likes" class="btn ghost">Thả 10 tim thử</button>
+      </section>
+    </main>
+
+    <dialog id="settings" class="settings">
+      <div class="settings-body">
+        <div class="settings-top">
+          <h2>Cài đặt</h2>
+          <button id="btn-close-settings" type="button" class="btn ghost small">Đóng</button>
+        </div>
+        <div id="settings-groups"></div>
+        <div class="row end">
+          <button id="btn-defaults" type="button" class="btn ghost">Về mặc định</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script type="module" src="./control.ts"></script>
+  </body>
+</html>
