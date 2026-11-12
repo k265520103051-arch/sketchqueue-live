@@ -177,11 +177,11 @@ h2 {
 }
 
 .status {
-  padding: 4px 10px;
+  padding: 8px 16px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  font-weight: 600;
-  font-size: 13px;
+  font-weight: 700;
+  font-size: 19.5px;
 }
 
 .status[data-state='connected'] {
@@ -482,6 +482,86 @@ h2 {
   width: 18px;
   height: 18px;
   accent-color: var(--accent);
+}
+
+/* Dải dừng */
+.drain-banner {
+  position: sticky;
+  top: 0;
+  z-index: 9;
+  padding: 10px 16px;
+  background: #fbbf24;
+  color: #2b1d00;
+  font-weight: 700;
+  text-align: center;
+}
+
+.drain-banner[hidden] {
+  display: none;
+}
+
+/* Bảng xếp hạng */
+.boards-title {
+  margin-top: 14px;
+}
+
+.boards {
+  max-height: 220px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.board {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.board.open {
+  border-color: var(--accent);
+}
+
+.board-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.board.open .board-title {
+  color: var(--accent);
+}
+
+.board-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Lỗi */
+.errors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  font: 13px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-item {
+  padding: 2px 0;
+  border-bottom: 1px solid #20242a;
+}
+
+.error-item.fatal {
+  color: #2a0a0a;
+  background: var(--danger);
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 @media (max-width: 900px) {

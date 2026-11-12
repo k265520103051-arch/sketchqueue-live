@@ -1,4 +1,4 @@
-import type { Command, FeedItem, SessionState } from '../../core/session';
+import type { Board, Command, ErrorItem, FeedItem, SessionState } from '../../core/session';
 import type { QueueEntry } from '../../core/queue';
 import type { Settings } from '../../core/settings';
 import { displayName } from '../../core/text';
@@ -40,11 +40,39 @@ export function feedLine(f: FeedItem): string {
   return `${t}  ${displayName(f.user)} @${f.user.handle}: ${f.text}`;
 }
 
+/** 'HH:MM:SS · nội dung'. */
+export function errorLine(e: ErrorItem): string {
+  return `${clock(e.at)} · ${e.text}`;
+}
+
+/** Dải cảnh báo khi đang dừng do mất kết nối; null nếu không cần. */
+export function drainBanner(s: SessionState): string | null {
+  if (!s.draining || s.conn === 'idle') return null;
+  return s.drawing
+    ? 'Mất kết nối — vẽ nốt bức đang vẽ rồi dừng'
+    : 'Mất kết nối — đã dừng. Hàng chờ được giữ nguyên.';
+}
+
+function hhmm(at: number): string {
+  const d = new Date(at);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** 'HH:MM–HH:MM · đang chạy' hoặc '· đã khoá'. */
+export function boardTitle(b: Board): string {
+  return `${hhmm(b.startAt)}–${hhmm(b.endAt)} · ${b.locked ? 'đã khoá' : 'đang chạy'}`;
+}
+
+/** '1. Tên · N xu'; tên = nickname, rỗng thì @handle. */
+export function boardRows(b: Board): string[] {
+  return b.top.map((r, i) => `${i + 1}. ${r.nickname.trim() ? r.nickname : '@' + r.handle} · ${r.coins} xu`);
+}
+
 export function keyToCommand(key: string, s: SessionState): Command | null {
   if (!s.drawing) return null;
   const k = key.toLowerCase();
   if (k === 'p') return { type: s.drawing.paused ? 'resume' : 'pause' };
-  if (k === 's') return { type: 'skip' };
+  if (k === 's') return { type: 'skip', id: s.drawing.entry.id };
   return null;
 }
 

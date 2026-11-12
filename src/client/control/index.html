@@ -9,6 +9,8 @@
   <body>
     <div id="offline" class="offline" hidden>Mất kết nối với máy chủ, đang thử lại…</div>
 
+    <div id="drain-banner" class="drain-banner" role="alert" hidden></div>
+
     <header class="top">
       <div class="brand">SketchQueue <span>LIVE</span></div>
       <a id="open-stage" class="link" href="/stage" target="_blank" rel="noopener">Mở sân khấu ↗</a>
@@ -35,7 +37,8 @@
       <!-- (3) Số liệu -->
       <section class="panel">
         <div id="tiles" class="tiles"></div>
-        <div id="top-gifters" class="line"></div>
+        <h2 class="boards-title">Bảng xếp hạng người tặng</h2>
+        <div id="boards" class="boards"></div>
         <div id="free-line" class="line muted"></div>
       </section>
 
@@ -71,6 +74,12 @@
             <ol id="queue" class="queue"></ol>
           </div>
         </div>
+      </section>
+
+      <!-- (4b) Lỗi -->
+      <section class="panel errors-panel">
+        <h2 id="errors-title">Lỗi</h2>
+        <ol id="errors" class="errors"></ol>
       </section>
 
       <!-- (5) Hàng thử -->

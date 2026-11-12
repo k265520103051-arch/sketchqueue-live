@@ -7,6 +7,10 @@ import { displayName } from '../../core/text';
 import {
   SETTING_FIELDS,
   SETTING_GROUPS,
+  boardRows,
+  boardTitle,
+  drainBanner,
+  errorLine,
   feedLine,
   fromFormValue,
   keyToCommand,
@@ -88,6 +92,9 @@ function render(s: SessionState): void {
   renderConn(s);
   renderToggles(s);
   renderStats(s);
+  renderBanner(s);
+  renderBoards(s);
+  renderErrors(s);
   renderFeed(s);
   renderNow(s);
   renderQueue(s);
@@ -128,10 +135,62 @@ function renderStats(s: SessionState): void {
     node.children[1].textContent = t.label;
   });
 
-  const top = s.stats.topGifters;
-  $('top-gifters').textContent =
-    top.length === 0 ? 'Top người tặng: chưa có' : 'Top người tặng: ' + top.map((g, i) => `${i + 1}. ${displayName(g.user)} (${g.coins} xu)`).join('   ');
   $('free-line').textContent = `Xin miễn phí: nhận ${s.freeAccepted} · từ chối ${s.declined}`;
+}
+
+function renderBanner(s: SessionState): void {
+  const text = drainBanner(s);
+  const b = $('drain-banner');
+  b.hidden = text === null;
+  b.textContent = text ?? '';
+}
+
+let lastBoardSig: string | null = null;
+
+function renderBoards(s: SessionState): void {
+  const box = $('boards');
+  const sig = JSON.stringify(s.boards);
+  if (sig === lastBoardSig) return;
+  const prevCount = box.children.length;
+  lastBoardSig = sig;
+  if (s.boards.length === 0) {
+    box.replaceChildren(el('div', 'muted', 'Chưa có quà'));
+    return;
+  }
+  const keep = box.scrollTop;
+  box.replaceChildren(
+    ...s.boards.map(b => {
+      const sec = el('section', 'board' + (b.locked ? ' locked' : ' open'));
+      sec.append(el('h3', 'board-title', boardTitle(b)));
+      const rows = boardRows(b);
+      if (rows.length === 0) sec.append(el('div', 'muted', 'Chưa có quà'));
+      else {
+        const ol = el('ol', 'board-rows');
+        for (const r of rows) ol.append(el('li', undefined, r));
+        sec.append(ol);
+      }
+      return sec;
+    }),
+  );
+  if (s.boards.length !== prevCount) {
+    const last = box.lastElementChild as HTMLElement | null;
+    if (last) box.scrollTop = last.offsetTop - box.offsetTop;
+  } else box.scrollTop = keep;
+}
+
+let lastErrorSig: string | null = null;
+
+function renderErrors(s: SessionState): void {
+  $('errors-title').textContent = s.errors.length ? `LỖI (${s.errors.length})` : 'Lỗi';
+  const sig = s.errors.map(e => e.id).join(',');
+  if (sig === lastErrorSig) return;
+  lastErrorSig = sig;
+  const box = $('errors');
+  if (s.errors.length === 0) {
+    box.replaceChildren(el('li', 'muted', 'Chưa có lỗi'));
+    return;
+  }
+  box.replaceChildren(...[...s.errors].reverse().map(e => el('li', 'error-item' + (e.fatal ? ' fatal' : ''), errorLine(e))));
 }
 
 let lastFeedId = 0;
@@ -288,7 +347,7 @@ function wire(): void {
   $('btn-pause').addEventListener('click', () => {
     if (state?.drawing) command({ type: state.drawing.paused ? 'resume' : 'pause' });
   });
-  $('btn-skip').addEventListener('click', () => command({ type: 'skip' }));
+  $('btn-skip').addEventListener('click', () => { if (state?.drawing) command({ type: 'skip', id: state.drawing.entry.id }); });
   $('btn-redo').addEventListener('click', () => command({ type: 'redoLast' }));
 
   $('btn-manual').addEventListener('click', () => {
@@ -320,7 +379,7 @@ function wire(): void {
   $('btn-test-likes').addEventListener('click', () => send({ type: 'test', kind: 'likes', handle: testUser(), arg: '', count: 10 }));
 
   document.addEventListener('keydown', ev => {
-    if (ev.ctrlKey || ev.metaKey || ev.altKey || isTyping() || !state) return;
+    if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey || isTyping() || !state) return;
     const c = keyToCommand(ev.key, state);
     if (c) {
       ev.preventDefault();

@@ -34,6 +34,9 @@ const idleState: SessionState = {
   queue: [],
   feed: [],
   settings: { ...DEFAULT_SETTINGS },
+  errors: [],
+  draining: false,
+  boards: [],
 };
 
 const state = idleState;

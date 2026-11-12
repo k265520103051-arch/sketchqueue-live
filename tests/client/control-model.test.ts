@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { statTiles, feedLine, keyToCommand, queueRow, SETTING_FIELDS, toFormValue, fromFormValue } from '../../src/client/control/control-model';
+import { boardRows, boardTitle, drainBanner, errorLine, statTiles, feedLine, keyToCommand, queueRow, SETTING_FIELDS, toFormValue, fromFormValue } from '../../src/client/control/control-model';
 import type { Drawing, SessionState } from '../../src/core/session';
 import type { QueueEntry } from '../../src/core/queue';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/core/settings';
@@ -34,6 +34,9 @@ const idleState: SessionState = {
   queue: [],
   feed: [],
   settings: { ...DEFAULT_SETTINGS },
+  errors: [],
+  draining: false,
+  boards: [],
 };
 
 const state = idleState;
@@ -71,7 +74,7 @@ describe('control-model', () => {
   test('keyToCommand', () => {
     expect(keyToCommand('p', drawingState({ paused: false }))).toEqual({ type: 'pause' });
     expect(keyToCommand('P', drawingState({ paused: true }))).toEqual({ type: 'resume' });
-    expect(keyToCommand('s', drawingState({}))).toEqual({ type: 'skip' });
+    expect(keyToCommand('s', drawingState({}))).toEqual({ type: 'skip', id: 'q1' });
     expect(keyToCommand('s', idleState)).toBeNull();
     expect(keyToCommand('x', drawingState({}))).toBeNull();
   });
@@ -80,6 +83,35 @@ describe('control-model', () => {
     expect(feedLine({ id: 1, at: Date.UTC(2026, 0, 1, 9, 5, 7), kind: 'system', user: null, text: 'Đã kết nối' })).toMatch(/^\d\d:\d\d:\d\d  · Đã kết nối$/);
     const u = { userId: 'sim:mai_test', handle: 'mai_test', nickname: 'Mai', avatarUrl: null };
     expect(feedLine({ id: 2, at: 0, kind: 'comment', user: u, text: '<b>x</b>' })).toMatch(/^\d\d:\d\d:\d\d  Mai @mai_test: <b>x<\/b>$/);
+  });
+
+  test('errorLine', () => {
+    expect(errorLine({ id: 1, at: Date.UTC(2026, 0, 1, 9, 5, 7), text: 'Hỏng <b>', fatal: false })).toMatch(/^[0-9][0-9]:[0-9][0-9]:[0-9][0-9] · Hỏng <b>$/);
+  });
+
+  test('drainBanner', () => {
+    const d = { ...drawingState({}), draining: true, conn: 'disconnected' as const };
+    expect(drainBanner(d)).toBe('Mất kết nối — vẽ nốt bức đang vẽ rồi dừng');
+    expect(drainBanner({ ...idleState, draining: true, conn: 'error' })).toBe('Mất kết nối — đã dừng. Hàng chờ được giữ nguyên.');
+    expect(drainBanner({ ...idleState, draining: true, conn: 'idle' })).toBeNull();
+    expect(drainBanner({ ...d, draining: false })).toBeNull();
+  });
+
+  test('boardTitle và boardRows', () => {
+    const at = new Date(2026, 0, 1, 9, 5).getTime();
+    const b = {
+      startAt: at,
+      endAt: at + 5 * 60000,
+      locked: false,
+      top: [
+        { handle: 'mai', nickname: 'Mai', coins: 30 },
+        { handle: 'bao', nickname: '', coins: 5 },
+      ],
+    };
+    expect(boardTitle(b)).toBe('09:05–09:10 · đang chạy');
+    expect(boardTitle({ ...b, locked: true })).toBe('09:05–09:10 · đã khoá');
+    expect(boardRows(b)).toEqual(['1. Mai · 30 xu', '2. @bao · 5 xu']);
+    expect(boardRows({ ...b, top: [] })).toEqual([]);
   });
 
   test('queueRow', () => {
