@@ -109,12 +109,18 @@ Lưu ý: Các giá trị thời gian trong bảng có thể nhập số thập p
 - **Xin vẽ không quà**: bình luận bắt đầu bằng từ khoá được nhận khi hàng chờ còn ngắn (dưới "Chỉ nhận xin vẽ khi hàng chờ dưới") và đạt một trong hai điều kiện: đã im lặng đủ "Nhận xin vẽ khi không có quà trong", hoặc trúng tỉ lệ ngẫu nhiên. Người đã có lượt đang chờ mà xin tiếp thì được bỏ qua. Người đang chờ dạng xin vẽ mà tặng quà thì lượt xin vẽ được thay bằng lượt quà.
 - **Màu**: nếu tổng xu của lượt khi bắt đầu vẽ đạt "Vẽ màu từ", bức vẽ có màu; nếu thấp hơn, bức vẽ dùng một màu mực.
 
+## Trên bảng điều khiển
+
+- **Bảng xếp hạng 5 phút**: người tặng được xếp hạng theo từng khung 5 phút, tính từ quà đầu tiên của khung. Hết 5 phút bảng bị khoá, bảng mới mở. Hiện 12 bảng đã khoá gần nhất và bảng đang chạy, cũ ở trên. Hàng chờ vẽ vẫn ưu tiên theo xu.
+- **Bảng lỗi**: mọi lỗi kết nối được ghi lại kèm giờ. Lỗi lẻ của thư viện chỉ được ghi, ứng dụng chạy tiếp. Lỗi làm mất kết nối được tô nổi bật.
+- **Khi mất kết nối hoặc live kết thúc**: bức đang vẽ được vẽ nốt, sau đó không lấy lượt mới. Hàng chờ giữ nguyên; nối lại thì vẽ tiếp.
+
 ## Phím tắt
 
 Phím tắt chỉ hoạt động khi đang có một bức đang vẽ, khi con trỏ không nằm trong ô nhập liệu, và không kèm Ctrl, Cmd hay Alt.
 
 - **P**: tạm dừng hoặc tiếp tục bức đang vẽ.
-- **S**: bỏ qua bức đang vẽ và chuyển sang lượt kế tiếp.
+- **S**: bỏ qua bức đang vẽ và chuyển sang lượt kế tiếp. Giữ phím không bỏ qua nhiều bức.
 
 ## Giới hạn và rủi ro
 

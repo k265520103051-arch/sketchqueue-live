@@ -44,3 +44,16 @@ Không có lỗi Critical. Phần TikTok đối chiếu với `.d.ts` của `tik
 ## Đã kiểm, ổn
 
 Người tặng liên tục không chặn ai; bỏ qua/xoá hết khi đang vẽ hoặc tạm dừng; đầu vào kết nối lạ bị chặn trước khi gọi mạng; kiểm Host/Origin; chặn path traversal; giới hạn kích thước tin; không có `innerHTML`; tên trường và tên sự kiện TikTok khớp `.d.ts`.
+
+## Kết quả lượt sửa (2026-11-12, commit f10e848..ccc3e16)
+
+| Mã | Kết quả |
+|---|---|
+| I1 | Đã sửa: lệnh bỏ qua mang id bức đang vẽ; phím giữ lặp bị bỏ qua |
+| I2 | Đã sửa: bảng lỗi trên trang điều khiển; lỗi lẻ chỉ ghi; mất kết nối thì vẽ nốt bức đang vẽ rồi dừng, hàng chờ giữ nguyên |
+| I3, I4, I5 | Chủ dự án quyết định bỏ qua |
+| I6 | Nhãn trạng thái to hơn (13px → 19.5px, đậm); "Live đã kết thúc" không còn bị ghi đè |
+| I7 | Đã sửa: mỗi lượt tải ảnh một lần, dùng chung cho cả lúc vẽ và `/api/avatar`; tải trước lượt đứng đầu hàng chờ |
+| I8 | Đã sửa: thay danh sách người tặng bằng bảng xếp hạng theo khung 5 phút (giữ 12 bảng đã khoá + 1 bảng đang chạy, mỗi bảng top 10) |
+
+Kiểm: `npm test` 177/177, `npm run typecheck` sạch, `npm run build:client` thành công.
