@@ -3,7 +3,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import type { LiveEvent, LiveSource } from '../../src/core/events';
 import type { SessionState } from '../../src/core/session';
@@ -34,7 +34,7 @@ function makeDirs(settings?: object) {
   return { dir, staticDir, settingsPath };
 }
 
-async function start(opts: { settings?: object; liveFactory?: LiveFactory; fetch?: typeof fetch } = {}) {
+async function start(opts: { settings?: object; liveFactory?: LiveFactory; fetch?: typeof fetch; avatarTimeoutMs?: number } = {}) {
   const dirs = makeDirs(opts.settings);
   const app = createApp({
     port: 0,
@@ -42,6 +42,7 @@ async function start(opts: { settings?: object; liveFactory?: LiveFactory; fetch
     settingsPath: dirs.settingsPath,
     liveFactory: opts.liveFactory ?? (() => ({ error: 'Chưa hỗ trợ' })),
     fetch: opts.fetch,
+    avatarTimeoutMs: opts.avatarTimeoutMs,
   });
   const { port } = await app.listen();
   cleanups.push(() => app.close());
@@ -278,7 +279,7 @@ describe('createApp', () => {
     const c = await openWs(port);
     c.send({ type: 'connect', mode: 'live', target: '@ai_do' });
     const s = await c.waitFor(s => s.conn === 'error');
-    expect(s.feed.some(f => f.kind === 'system' && f.text.includes('Chưa hỗ trợ'))).toBe(true);
+    expect(s.errors.some(e => e.text.includes('Chưa hỗ trợ'))).toBe(true);
   });
 
   test('/api/avatar/<id sai> → 404', async () => {
@@ -320,6 +321,93 @@ describe('createApp', () => {
     const s = await c.waitFor(s => s.drawing?.ready === true);
     expect(s.drawing!.entry.user.avatarUrl).toBeNull();
     expect((await fetch(`${base}/api/avatar/${encodeURIComponent(s.drawing!.entry.id)}`)).status).toBe(404);
+  });
+
+  const gifter = (n: number) => ({ userId: 'u' + n, handle: 'user_' + n, nickname: 'U' + n, avatarUrl: `https://img.example/${n}.png` });
+  const giftsFrom = (users: ReturnType<typeof gifter>[]) => () =>
+    fakeLive(at => [
+      { type: 'status', state: 'connected', roomId: 'r1', at },
+      ...users.map(user => ({ type: 'gift' as const, user, giftName: 'Rose', coins: 5, count: 5, at })),
+    ]);
+  const pngFetch = (calls: string[]) =>
+    (async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return new Response(Buffer.from([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { 'content-type': 'image/png' } });
+    }) as typeof fetch;
+
+  test('fetch không bao giờ xong → ready đặt khi hết hạn, /api/avatar 404, fetch gọi 1 lần', async () => {
+    const calls: string[] = [];
+    const hang = ((url: string | URL | Request) => {
+      calls.push(String(url));
+      return new Promise<Response>(() => {});
+    }) as typeof fetch;
+    const { port, base } = await start({
+      settings: { stageDelayMs: 0 },
+      fetch: hang,
+      avatarTimeoutMs: 150,
+      liveFactory: giftsFrom([gifter(1)]),
+    });
+    const c = await openWs(port);
+    c.send({ type: 'connect', mode: 'live', target: '@x' });
+    const s = await c.waitFor(s => s.drawing?.ready === true);
+    const r = await fetch(`${base}/api/avatar/${encodeURIComponent(s.drawing!.entry.id)}`);
+    expect(r.status).toBe(404);
+    expect(calls).toEqual(['https://img.example/1.png']);
+  });
+
+  test('fetch thành công → GET trả ảnh, fetch gọi 1 lần', async () => {
+    const calls: string[] = [];
+    const { port, base } = await start({ settings: { stageDelayMs: 0 }, fetch: pngFetch(calls), liveFactory: giftsFrom([gifter(1)]) });
+    const c = await openWs(port);
+    c.send({ type: 'connect', mode: 'live', target: '@x' });
+    const s = await c.waitFor(s => s.drawing?.ready === true);
+    const id = encodeURIComponent(s.drawing!.entry.id);
+    expect((await fetch(`${base}/api/avatar/${id}`)).status).toBe(200);
+    expect((await fetch(`${base}/api/avatar/${id}`)).status).toBe(200);
+    expect(calls).toEqual(['https://img.example/1.png']);
+  });
+
+  test('lượt đứng đầu hàng chờ được tải trước; tới lượt thì không tải lại', async () => {
+    const calls: string[] = [];
+    const { port, base } = await start({ settings: { stageDelayMs: 0 }, fetch: pngFetch(calls), liveFactory: giftsFrom([gifter(1), gifter(2), gifter(3)]) });
+    const c = await openWs(port);
+    c.send({ type: 'connect', mode: 'live', target: '@x' });
+    const s = await c.waitFor(s => s.drawing?.ready === true);
+    expect(s.drawing!.entry.user.userId).toBe('u1');
+    await c.waitFor(() => calls.length >= 2);
+    expect(calls).toEqual(['https://img.example/1.png', 'https://img.example/2.png']);
+    c.send({ type: 'command', command: { type: 'skip' } });
+    const s2 = await c.waitFor(s => s.drawing?.entry.user.userId === 'u2' && s.drawing.ready);
+    expect((await fetch(`${base}/api/avatar/${encodeURIComponent(s2.drawing!.entry.id)}`)).status).toBe(200);
+    await c.waitFor(() => calls.length >= 3);
+    expect(calls).toEqual(['https://img.example/1.png', 'https://img.example/2.png', 'https://img.example/3.png']);
+  });
+
+  test('bộ nhớ ảnh giữ tối đa 8 mục', async () => {
+    const calls: string[] = [];
+    const users = Array.from({ length: 12 }, (_, i) => gifter(i + 1));
+    const { app, port } = await start({ settings: { stageDelayMs: 0 }, fetch: pngFetch(calls), liveFactory: giftsFrom(users) });
+    const c = await openWs(port);
+    c.send({ type: 'connect', mode: 'live', target: '@x' });
+    for (let i = 1; i <= 12; i++) {
+      await c.waitFor(s => s.drawing?.entry.user.userId === 'u' + i && s.drawing.ready);
+      expect(app.avatarMemoSize()).toBeLessThanOrEqual(8);
+      c.send({ type: 'command', command: { type: 'skip' } });
+    }
+    expect(calls.length).toBe(12);
+    expect(app.avatarMemoSize()).toBe(8);
+  });
+
+  test('lệnh skip có id đi nguyên vẹn tới session.command', async () => {
+    const { app, port } = await start();
+    const spy = vi.spyOn(app.session, 'command');
+    const c = await openWs(port);
+    c.send({ type: 'command', command: { type: 'skip', id: 5 as unknown as string } }); // id sai kiểu → bỏ
+    c.send({ type: 'command', command: { type: 'skip', id: 'abc' } });
+    c.send({ type: 'command', command: { type: 'skip' } });
+    await vi.waitFor(() => expect(spy.mock.calls.length).toBe(2));
+    expect(spy.mock.calls[0][0]).toEqual({ type: 'skip', id: 'abc' });
+    expect(spy.mock.calls[1][0]).toEqual({ type: 'skip' });
   });
 
   test('100 sự kiện dồn dập → số thông điệp state nhận được trong 1 s ≤ 6', async () => {

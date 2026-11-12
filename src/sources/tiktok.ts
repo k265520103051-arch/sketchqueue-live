@@ -88,6 +88,8 @@ export function createTikTokSource(
   };
   const conn = factory(handle);
   let stopped = false;
+  let connected = false;
+  let ended = false;
 
   const withUser = (data: any, make: (user: LiveUser, at: number) => LiveEvent | null) => {
     const user = toUser(data?.user);
@@ -109,9 +111,19 @@ export function createTikTokSource(
   conn.on('member', data => withUser(data, (user, at) => ({ type: 'join', user, at })));
   conn.on('follow', data => withUser(data, (user, at) => ({ type: 'follow', user, at })));
   conn.on('roomUser', data => emit({ type: 'viewers', count: num(data?.total), at: now() }));
-  conn.on('streamEnd', () => emit({ type: 'status', state: 'ended', at: now() }));
-  conn.on('disconnected', () => emit({ type: 'status', state: 'disconnected', at: now() }));
-  conn.on('error', err => emit({ type: 'status', state: 'error', message: errorMessage(err), at: now() }));
+  conn.on('streamEnd', () => {
+    ended = true;
+    emit({ type: 'status', state: 'ended', at: now() });
+  });
+  conn.on('disconnected', () => {
+    if (ended) return; // sau streamEnd, giữ trạng thái "ended"
+    emit({ type: 'status', state: 'disconnected', at: now() });
+  });
+  // Lỗi lẻ sau khi đã kết nối: chỉ báo lỗi, không đổi trạng thái. Trước đó, phần connect() bị từ chối sẽ báo.
+  conn.on('error', err => {
+    if (!connected) return;
+    emit({ type: 'error', message: errorMessage(err), at: now() });
+  });
 
   return {
     async start() {
@@ -119,6 +131,7 @@ export function createTikTokSource(
       try {
         const state = await conn.connect();
         const roomId = state?.roomId;
+        connected = true;
         emit({
           type: 'status',
           state: 'connected',

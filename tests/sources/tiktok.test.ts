@@ -175,10 +175,34 @@ describe('createTikTokSource', () => {
     expect(events.at(-1)).toEqual({ type: 'status', state: 'disconnected', at: 42 });
   });
 
-  test('error → status error kèm message', async () => {
+  test('error sau connected → sự kiện error kèm message, không phát status', async () => {
     await make().start();
+    const before = events.length;
     fake.emit('error', { info: 'WebSocket Error after connecting', exception: new Error('boom') });
-    expect(events.at(-1)).toMatchObject({ type: 'status', state: 'error', message: expect.stringContaining('boom') });
+    expect(events.length).toBe(before + 1);
+    expect(events.at(-1)).toMatchObject({ type: 'error', message: expect.stringContaining('boom'), at: 42 });
+    expect(events.filter(e => e.type === 'status' && e.state === 'error')).toEqual([]);
+  });
+
+  test('error đến trước connected (đang connect) → bỏ qua; connect() bị từ chối → status error đúng một lần', async () => {
+    fake.connectResult = new Promise((_res, rej) => {
+      setTimeout(() => {
+        fake.emit('error', { info: 'Failed to connect', exception: new Error('boom') });
+        rej(new Error('boom'));
+      }, 0);
+    });
+    await make().start();
+    expect(events.filter(e => (e.type as string) === 'error')).toEqual([]);
+    expect(events.filter(e => e.type === 'status' && e.state === 'error')).toHaveLength(1);
+  });
+
+  test('streamEnd rồi disconnected → status cuối cùng vẫn là ended', async () => {
+    await make().start();
+    fake.emit('streamEnd', { action: 3 });
+    fake.emit('disconnected', { code: 1000, reason: '' });
+    const statuses = events.filter(e => e.type === 'status');
+    expect(statuses.at(-1)).toEqual({ type: 'status', state: 'ended', at: 42 });
+    expect(statuses.some(e => e.type === 'status' && e.state === 'disconnected')).toBe(false);
   });
 
   test('stop() hai lần → disconnect() gọi một lần', async () => {

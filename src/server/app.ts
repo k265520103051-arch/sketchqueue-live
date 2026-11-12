@@ -18,6 +18,7 @@ const MAX_MSG_BYTES = 16 * 1024;
 const STATE_THROTTLE_MS = 250;
 const TICK_MS = 100;
 const AVATAR_CACHE_MAX = 20;
+const AVATAR_MEMO_MAX = 8;
 const COMMENT_MAX = 200;
 
 const MIME: Record<string, string> = {
@@ -39,7 +40,7 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-const NO_ARG_COMMANDS = new Set(['pause', 'resume', 'skip', 'redoLast', 'clearQueue']);
+const NO_ARG_COMMANDS = new Set(['pause', 'resume', 'redoLast', 'clearQueue']);
 const ID_COMMANDS = new Set(['remove', 'moveToFront', 'ready']);
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -50,6 +51,10 @@ function isObj(v: unknown): v is Record<string, unknown> {
 function parseCommand(v: unknown): Command | null {
   if (!isObj(v) || typeof v.type !== 'string') return null;
   if (NO_ARG_COMMANDS.has(v.type)) return { type: v.type } as Command;
+  if (v.type === 'skip') {
+    if (v.id === undefined) return { type: 'skip' };
+    return typeof v.id === 'string' ? { type: 'skip', id: v.id } : null;
+  }
   if (ID_COMMANDS.has(v.type)) return typeof v.id === 'string' ? ({ type: v.type, id: v.id } as Command) : null;
   if (v.type === 'addManual') return typeof v.handle === 'string' ? { type: 'addManual', handle: v.handle } : null;
   if (v.type === 'setSettings') return { type: 'setSettings', patch: v.patch };
@@ -94,12 +99,16 @@ export function createApp(opts: {
   liveFactory: LiveFactory;
   fetch?: typeof fetch;
   now?: () => number;
-}): { listen(): Promise<{ port: number }>; close(): Promise<void>; session: Session } {
+  /** Hạn tải ảnh đại diện (mặc định 8 s); chủ yếu để test. */
+  avatarTimeoutMs?: number;
+}): { listen(): Promise<{ port: number }>; close(): Promise<void>; session: Session; avatarMemoSize(): number } {
   const now = opts.now ?? Date.now;
   const doFetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
   const staticDir = resolve(opts.staticDir);
   const assetsDir = resolve(staticDir, 'assets');
   const avatarCache = new Map<string, AvatarImage>();
+  // entryId → lần tải ảnh duy nhất của lượt đó (null = không có ảnh). Giữ tối đa AVATAR_MEMO_MAX mục.
+  const avatarMemo = new Map<string, Promise<AvatarImage | null>>();
 
   const session = new Session({ settings: loadSettings(opts.settingsPath), startAt: now() });
   const sim = new SimulatorSource({ now });
@@ -148,18 +157,29 @@ export function createApp(opts: {
   }
 
   // ---------- tải ảnh trước khi vẽ ----------
+  function loadAvatar(entry: { id: string; user: { avatarUrl: string | null } }): Promise<AvatarImage | null> {
+    const have = avatarMemo.get(entry.id);
+    if (have) return have;
+    const p = fetchAvatar(entry.user.avatarUrl, { fetch: doFetch, cache: avatarCache, timeoutMs: opts.avatarTimeoutMs }).catch(() => null);
+    avatarMemo.set(entry.id, p);
+    while (avatarMemo.size > AVATAR_MEMO_MAX) avatarMemo.delete(avatarMemo.keys().next().value as string);
+    trimCache(entry.user.avatarUrl);
+    return p;
+  }
+
   function onState(s: SessionState): void {
     const d = s.drawing;
     const id = d ? d.entry.id : null;
     if (id !== drawingId) {
       drawingId = id;
       if (d && id !== null && !d.ready) {
-        void fetchAvatar(d.entry.user.avatarUrl, { fetch: doFetch, cache: avatarCache }).then(() => {
-          trimCache(d.entry.user.avatarUrl);
+        void loadAvatar(d.entry).then(() => {
           if (!closed) session.command({ type: 'ready', id }, now());
         });
       }
     }
+    const head = s.queue[0];
+    if (head) void loadAvatar(head);
     scheduleBroadcast();
   }
 
@@ -308,7 +328,7 @@ export function createApp(opts: {
     }
     const d = session.getState().drawing;
     if (!d || d.entry.id !== id) return send(res, 404, 'Không tìm thấy');
-    const img = await fetchAvatar(d.entry.user.avatarUrl, { fetch: doFetch, cache: avatarCache });
+    const img = await loadAvatar(d.entry);
     if (!img) return send(res, 404, 'Không tìm thấy');
     send(res, 200, img.body, {
       'Content-Type': img.contentType,
@@ -367,6 +387,7 @@ export function createApp(opts: {
 
   return {
     session,
+    avatarMemoSize: () => avatarMemo.size,
     listen() {
       return new Promise((resolveListen, rejectListen) => {
         const onError = (err: Error) => rejectListen(err);
