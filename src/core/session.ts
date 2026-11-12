@@ -23,6 +23,12 @@ export type FeedItem = {
   text: string;
 };
 
+export type ErrorItem = { id: number; at: number; text: string; fatal: boolean };
+
+export type BoardRow = { handle: string; nickname: string; coins: number };
+
+export type Board = { startAt: number; endAt: number; locked: boolean; top: BoardRow[] };
+
 export type SessionState = {
   conn: ConnState;
   roomId: string | null;
@@ -37,12 +43,19 @@ export type SessionState = {
   /** 200 mục mới nhất. */
   feed: FeedItem[];
   settings: Settings;
+  /** 50 mục mới nhất, cũ trước. */
+  errors: ErrorItem[];
+  /** true sau disconnected/ended/error; false khi connected. Khi true, tick không lấy lượt mới. */
+  draining: boolean;
+  /** Cũ trước; phần tử cuối là bảng đang mở (nếu chưa hết giờ). Tối đa 12 bảng khoá + 1 bảng mở. */
+  boards: Board[];
 };
 
 export type Command =
   | { type: 'pause' }
   | { type: 'resume' }
-  | { type: 'skip' }
+  /** Có id mà khác bức đang vẽ thì bỏ qua lệnh. */
+  | { type: 'skip'; id?: string }
   | { type: 'redoLast' }
   | { type: 'clearQueue' }
   | { type: 'remove'; id: string }
@@ -52,6 +65,13 @@ export type Command =
   | { type: 'ready'; id: string };
 
 const FEED_MAX = 200;
+const ERRORS_MAX = 50;
+/** Khung bảng xếp hạng, tính từ quà đầu tiên của bảng. */
+export const BOARD_MS = 300_000;
+const BOARD_TOP = 10;
+const BOARDS_LOCKED_MAX = 12;
+
+type OpenBoard = { startAt: number; endAt: number; rows: Map<string, BoardRow> };
 
 const STATUS_TEXT: Record<ConnState, string> = {
   idle: 'Chưa kết nối',
@@ -78,6 +98,13 @@ export class Session {
   private lastDrawn: QueueEntry | null = null;
   private feed: FeedItem[] = [];
   private feedId = 1;
+  private errors: ErrorItem[] = [];
+  private errorId = 1;
+  private draining = false;
+  private gifters = new Set<string>();
+  /** Bảng đã khoá, cũ trước; chỉ giữ top 10. */
+  private lockedBoards: Board[] = [];
+  private openBoard: OpenBoard | null = null;
   private lastGiftAt: number | null = null;
   private lastTickAt: number | null = null;
   private listeners = new Set<(s: SessionState) => void>();
@@ -94,8 +121,15 @@ export class Session {
 
     if (e.type === 'status') {
       this.conn = e.state;
+      if (e.state === 'connected') this.draining = false;
+      else if (e.state === 'disconnected' || e.state === 'ended' || e.state === 'error') this.draining = true;
+      if (e.state === 'error') this.addError(e.at, e.message || STATUS_TEXT.error, true);
       if (e.roomId !== undefined) this.roomId = e.roomId;
+    } else if (e.type === 'error') {
+      this.addError(e.at, e.message, false);
     } else if (e.type === 'gift') {
+      this.gifters.add(e.user.userId);
+      this.addToBoard(e);
       if (e.coins >= this.settings.minCoins) this.lastGiftAt = e.at;
       this.admit(e);
     } else if (e.type === 'comment') {
@@ -113,6 +147,7 @@ export class Session {
         if (this.drawing) this.drawing = { ...this.drawing, paused: c.type === 'pause' };
         break;
       case 'skip':
+        if (c.id !== undefined && c.id !== this.drawing?.entry.id) break;
         this.drawing = null;
         break;
       case 'redoLast':
@@ -162,7 +197,12 @@ export class Session {
       }
     }
 
-    if (!this.drawing) {
+    if (this.openBoard && now >= this.openBoard.endAt) {
+      this.lockOpenBoard();
+      changed = true;
+    }
+
+    if (!this.drawing && !this.draining) {
       const next = this.queue.takeEligible(now, this.settings.stageDelayMs);
       if (next) {
         this.drawing = { entry: next, progress: 0, paused: false, ready: false, color: next.coins >= this.settings.colorMinCoins };
@@ -176,7 +216,7 @@ export class Session {
     return {
       conn: this.conn,
       roomId: this.roomId,
-      stats: this.stats,
+      stats: { ...this.stats, gifters: this.gifters.size },
       drawn: this.drawn,
       owed: this.owed,
       declined: this.declined,
@@ -186,6 +226,9 @@ export class Session {
       queue: this.queue.list(),
       feed: [...this.feed],
       settings: { ...this.settings },
+      errors: [...this.errors],
+      draining: this.draining,
+      boards: this.boardsView(),
     };
   }
 
@@ -214,6 +257,39 @@ export class Session {
     }
   }
 
+  private addError(at: number, text: string, fatal: boolean): void {
+    this.errors.push({ id: this.errorId++, at, text, fatal });
+    if (this.errors.length > ERRORS_MAX) this.errors.splice(0, this.errors.length - ERRORS_MAX);
+  }
+
+  private addToBoard(e: Extract<LiveEvent, { type: 'gift' }>): void {
+    if (this.openBoard && e.at >= this.openBoard.endAt) this.lockOpenBoard();
+    if (!this.openBoard) this.openBoard = { startAt: e.at, endAt: e.at + BOARD_MS, rows: new Map() };
+    const prev = this.openBoard.rows.get(e.user.userId);
+    // Map giữ thứ tự chèn → bằng xu thì ai tặng trước đứng trước.
+    this.openBoard.rows.set(e.user.userId, {
+      handle: e.user.handle,
+      nickname: e.user.nickname,
+      coins: (prev?.coins ?? 0) + e.coins,
+    });
+  }
+
+  private lockOpenBoard(): void {
+    const b = this.openBoard;
+    if (!b) return;
+    this.openBoard = null;
+    this.lockedBoards.push({ startAt: b.startAt, endAt: b.endAt, locked: true, top: topRows(b.rows) });
+    if (this.lockedBoards.length > BOARDS_LOCKED_MAX) this.lockedBoards.splice(0, this.lockedBoards.length - BOARDS_LOCKED_MAX);
+  }
+
+  private boardsView(): Board[] {
+    const out = this.lockedBoards.map(b => ({ ...b, top: b.top.map(r => ({ ...r })) }));
+    if (this.openBoard) {
+      out.push({ startAt: this.openBoard.startAt, endAt: this.openBoard.endAt, locked: false, top: topRows(this.openBoard.rows) });
+    }
+    return out;
+  }
+
   private addOpts() {
     return { combineWindowMs: this.settings.combineWindowMs, max: this.settings.maxQueue };
   }
@@ -234,6 +310,7 @@ export class Session {
         item = { at: e.at, kind: 'follow', user: e.user, text: 'đã theo dõi' };
         break;
       case 'status': {
+        if (e.state === 'error') return; // vào bảng lỗi, không vào feed
         let text = STATUS_TEXT[e.state];
         if (e.roomId) text += ` (room ${e.roomId})`;
         if (e.message) text += `: ${e.message}`;
@@ -251,4 +328,9 @@ export class Session {
     const s = this.getState();
     for (const cb of this.listeners) cb(s);
   }
+}
+
+function topRows(rows: Map<string, BoardRow>): BoardRow[] {
+  // sort ổn định: bằng xu giữ thứ tự chèn
+  return [...rows.values()].sort((a, b) => b.coins - a.coins).slice(0, BOARD_TOP).map(r => ({ ...r }));
 }

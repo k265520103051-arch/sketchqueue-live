@@ -164,4 +164,101 @@ describe('Session', () => {
     s.handle(cm('d', '!ve', 500_000));
     expect(st(s).declined).toBe(1); expect(st(s).queue.length).toBe(3);
   });
+
+  test('27. skip có id khác bức đang vẽ thì bỏ qua', () => {
+    const s = mk(); s.handle(gift('a', 5, 0)); s.handle(gift('b', 1, 0)); start(s, 0);
+    const first = st(s).drawing!.entry.id;
+    s.command({ type: 'skip', id: first }, 0);
+    s.tick(1); s.command({ type: 'ready', id: st(s).drawing!.entry.id }, 1);
+    s.command({ type: 'skip', id: first }, 2);
+    s.tick(3);
+    expect(st(s).drawing!.entry.user.userId).toBe('b');
+    s.command({ type: 'skip', id: 'nope' }, 4);
+    expect(st(s).drawing!.entry.user.userId).toBe('b');
+  });
+  test('27b. skip có id khi không vẽ gì thì không làm gì', () => {
+    const s = mk(); s.command({ type: 'skip', id: 'x' }, 0); expect(st(s).drawing).toBeNull();
+  });
+  test('28. error không đổi conn, không vào feed, vào errors', () => {
+    const s = mk(); s.handle({ type: 'status', state: 'connected', at: 1 });
+    const feedLen = st(s).feed.length;
+    s.handle({ type: 'error', message: 'oops', at: 2 });
+    expect(st(s).conn).toBe('connected'); expect(st(s).feed.length).toBe(feedLen);
+    expect(st(s).errors).toEqual([{ id: 1, at: 2, text: 'oops', fatal: false }]);
+    expect(st(s).draining).toBe(false);
+  });
+  test('29. status error là lỗi nặng, không vào feed', () => {
+    const s = mk();
+    s.handle({ type: 'status', state: 'error', at: 1 });
+    s.handle({ type: 'status', state: 'error', message: 'rớt', at: 2 });
+    expect(st(s).errors.map(e => [e.text, e.fatal])).toEqual([['Lỗi kết nối', true], ['rớt', true]]);
+    expect(st(s).feed).toEqual([]); expect(st(s).draining).toBe(true);
+  });
+  test('30. errors giữ 50', () => {
+    const s = mk(); for (let i = 1; i <= 60; i++) s.handle({ type: 'error', message: 'e' + i, at: i });
+    expect(st(s).errors.length).toBe(50); expect(st(s).errors[0].text).toBe('e11'); expect(st(s).errors.at(-1)!.text).toBe('e60');
+  });
+  test('31. draining: vẽ xong bức hiện tại, không lấy lượt kế', () => {
+    const s = mk(); s.handle(gift('a', 5, 0)); s.handle(gift('b', 1, 0)); start(s, 0);
+    s.handle({ type: 'status', state: 'disconnected', at: 1 });
+    expect(st(s).draining).toBe(true);
+    s.tick(45_000);
+    expect(st(s).drawn).toBe(1); expect(st(s).drawing).toBeNull(); expect(st(s).queue.length).toBe(1);
+    s.tick(46_000); expect(st(s).drawing).toBeNull();
+    s.handle({ type: 'status', state: 'connecting', at: 46_001 }); expect(st(s).draining).toBe(true);
+    s.handle({ type: 'status', state: 'connected', at: 46_002 }); expect(st(s).draining).toBe(false);
+    s.tick(46_003); expect(st(s).drawing!.entry.user.userId).toBe('b');
+  });
+  test('32. draining vẫn nhận lệnh tay', () => {
+    const s = mk(); s.handle({ type: 'status', state: 'ended', at: 0 });
+    s.command({ type: 'addManual', handle: 'x' }, 0); expect(st(s).queue.length).toBe(1);
+    s.tick(1); expect(st(s).drawing).toBeNull();
+  });
+  test('33. bảng xếp hạng chung khung 5 phút', () => {
+    const s = mk(); s.handle(gift('a', 1, 0)); s.handle(gift('b', 2, 299_999));
+    const b = st(s).boards;
+    expect(b.length).toBe(1);
+    expect(b[0]).toMatchObject({ startAt: 0, endAt: 300_000, locked: false });
+    expect(b[0].top).toEqual([{ handle: 'b_test', nickname: 'b', coins: 2 }, { handle: 'a_test', nickname: 'a', coins: 1 }]);
+  });
+  test('33b. chưa có quà thì boards rỗng', () => { expect(st(mk()).boards).toEqual([]); });
+  test('34. quà ở 300000 khoá bảng một, mở bảng hai; bảng khoá không đổi', () => {
+    const s = mk(); s.handle(gift('a', 1, 10)); s.handle(gift('a', 1, 300_010));
+    const b = st(s).boards;
+    expect(b.length).toBe(2);
+    expect(b[0]).toMatchObject({ locked: true, startAt: 10, endAt: 300_010 });
+    expect(b[0].top[0].coins).toBe(1);
+    expect(b[1]).toMatchObject({ locked: false, startAt: 300_010 });
+    s.handle(gift('a', 5, 300_020));
+    expect(st(s).boards[0].top[0].coins).toBe(1); expect(st(s).boards[1].top[0].coins).toBe(6);
+  });
+  test('35. 14 khung → 12 bảng khoá + 1 mở, cũ trước', () => {
+    const s = mk();
+    for (let i = 0; i < 14; i++) s.handle(gift('a', i + 1, i * 300_000));
+    const b = st(s).boards;
+    expect(b.length).toBe(13);
+    expect(b.slice(0, 12).every(x => x.locked)).toBe(true); expect(b[12].locked).toBe(false);
+    expect(b[0].top[0].coins).toBe(2); expect(b[12].top[0].coins).toBe(14);
+  });
+  test('36. tick khoá bảng hết giờ và emit', () => {
+    const s = mk(); s.handle(gift('a', 1, 0)); s.tick(0);
+    const cb = vi.fn(); s.onChange(cb);
+    s.tick(299_999); expect(st(s).boards[0].locked).toBe(false);
+    cb.mockClear();
+    s.tick(300_000); expect(st(s).boards[0].locked).toBe(true); expect(cb).toHaveBeenCalled();
+  });
+  test('37. top tối đa 10, xu giảm dần, bằng xu ai tặng trước đứng trước', () => {
+    const s = mk();
+    for (let i = 0; i < 12; i++) s.handle(gift('u' + i, 5, i));
+    s.handle(gift('u11', 10, 20));
+    const top = st(s).boards[0].top;
+    expect(top.length).toBe(10);
+    expect(top.map(r => r.nickname)).toEqual(['u11', 'u0', 'u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'u7', 'u8']);
+  });
+  test('38. stats.gifters là số, JSON không chứa coinsByUser', () => {
+    const s = mk(); s.handle(gift('a', 1, 0)); s.handle(gift('a', 1, 1)); s.handle(gift('b', 1, 2));
+    expect(st(s).stats.gifters).toBe(2);
+    const json = JSON.stringify(st(s));
+    expect(json).not.toContain('coinsByUser'); expect(json).not.toContain('topGifters');
+  });
 });

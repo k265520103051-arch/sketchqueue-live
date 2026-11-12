@@ -1,19 +1,14 @@
-import type { LiveEvent, LiveUser } from './events';
-
-export type TopGifter = { user: LiveUser; coins: number };
+import type { LiveEvent } from './events';
 
 export type SessionStats = {
   viewers: number;
   coins: number;
   giftCount: number;
+  /** Số người tặng; Session tự đếm bằng Set userId, reduceStats không đụng tới. */
   gifters: number;
   newFollowers: number;
   likes: number;
   comments: number;
-  /** Tối đa 3, giảm dần theo coins. */
-  topGifters: TopGifter[];
-  /** Khoá là userId. */
-  coinsByUser: Record<string, TopGifter>;
 };
 
 export const EMPTY_STATS: SessionStats = Object.freeze({
@@ -24,8 +19,6 @@ export const EMPTY_STATS: SessionStats = Object.freeze({
   newFollowers: 0,
   likes: 0,
   comments: 0,
-  topGifters: [],
-  coinsByUser: {},
 }) as SessionStats;
 
 export function reduceStats(s: SessionStats, e: LiveEvent): SessionStats {
@@ -38,22 +31,8 @@ export function reduceStats(s: SessionStats, e: LiveEvent): SessionStats {
       return { ...s, newFollowers: s.newFollowers + 1 };
     case 'comment':
       return { ...s, comments: s.comments + 1 };
-    case 'gift': {
-      const prev = s.coinsByUser[e.user.userId];
-      const entry: TopGifter = { user: e.user, coins: (prev?.coins ?? 0) + e.coins };
-      const coinsByUser = { ...s.coinsByUser, [e.user.userId]: entry };
-      const topGifters = Object.values(coinsByUser)
-        .sort((a, b) => b.coins - a.coins)
-        .slice(0, 3);
-      return {
-        ...s,
-        coins: s.coins + e.coins,
-        giftCount: s.giftCount + 1,
-        gifters: prev ? s.gifters : s.gifters + 1,
-        coinsByUser,
-        topGifters,
-      };
-    }
+    case 'gift':
+      return { ...s, coins: s.coins + e.coins, giftCount: s.giftCount + 1 };
     default:
       return s;
   }

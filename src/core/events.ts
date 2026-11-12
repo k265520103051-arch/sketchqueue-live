@@ -10,7 +10,9 @@ export type LiveEvent =
   | { type: 'join'; user: LiveUser; at: number }
   | { type: 'follow'; user: LiveUser; at: number }
   | { type: 'viewers'; count: number; at: number }
-  | { type: 'status'; state: ConnState; roomId?: string; message?: string; at: number };
+  | { type: 'status'; state: ConnState; roomId?: string; message?: string; at: number }
+  // lỗi lẻ, không đổi trạng thái kết nối
+  | { type: 'error'; message: string; at: number };
 
 export interface LiveSource {
   start(): Promise<void>;
