@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sketchqueue",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "sketchqueue-live", "start"],
+      "port": 4780
+    }
+  ]
+}
