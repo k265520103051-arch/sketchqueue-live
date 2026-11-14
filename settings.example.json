@@ -1,0 +1,14 @@
+{
+  "minCoins": 1,
+  "combineWindowMs": 60000,
+  "maxQueue": 50,
+  "acceptingGifts": true,
+  "allowFreeRequests": true,
+  "freeKeyword": "!ve",
+  "freeIdleMs": 120000,
+  "freeChance": 0.1,
+  "freeQueueLimit": 3,
+  "colorMinCoins": 99,
+  "drawSeconds": 45,
+  "stageDelayMs": 3000
+}

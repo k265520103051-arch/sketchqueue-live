@@ -1,0 +1,14 @@
+{
+  "name": "SketchQueue LIVE",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
+  "postCreateCommand": "npm ci",
+  "forwardPorts": [4780],
+  "portsAttributes": {
+    "4780": { "label": "Bảng điều khiển", "onAutoForward": "notify" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["vitest.explorer"]
+    }
+  }
+}
